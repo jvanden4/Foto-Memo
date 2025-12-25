@@ -367,7 +367,12 @@ const App: React.FC = () => {
               </div>
               <span className="text-xl font-bold tracking-tight text-slate-800">Foto Memo</span>
             </div>
-            
+            {/* VOEG DIT STUKJE HIERONDER TOE */}
+  <div className="flex items-center space-x-4">
+    <div id="google-login-button"></div>
+  </div>
+  {/* EINDE TOEVOEGING */}
+</div>
             <div className="flex items-center space-x-3">
               {/* Sync Status Indicator */}
               {isLoggedIn ? (
