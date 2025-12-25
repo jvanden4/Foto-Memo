@@ -311,7 +311,7 @@ const App: React.FC = () => {
             </div>
 
             <div className="flex items-center space-x-3">
-              <div id="google-login-button"></div>
+              <div id="google-login-button" style={{ minWidth: '200px', minHeight: '40px', background: 'red' }}></div>
               
               {isLoggedIn ? (
                 <div className={`flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-bold uppercase transition-all ${isSyncing ? 'bg-indigo-100 text-indigo-600' : 'bg-green-100 text-green-600'}`}>
