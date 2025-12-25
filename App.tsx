@@ -359,20 +359,24 @@ const App: React.FC = () => {
       />
 
       <nav className="bg-[#fdfbf7]/80 backdrop-blur-md border-b border-stone-200 sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center space-x-3 cursor-pointer" onClick={() => setView('categories')}>
-              <div className="bg-indigo-600 p-2 rounded-lg">
-                <FolderOpen className="text-white h-6 w-6" />
-              </div>
-              <span className="text-xl font-bold tracking-tight text-slate-800">Foto Memo</span>
-            </div>
-            {/* VOEG DIT STUKJE HIERONDER TOE */}
-  <div className="flex items-center space-x-4">
-    <div id="google-login-button"></div>
+  <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div className="flex items-center justify-between h-16">
+      {/* Logo gedeelte */}
+      <div className="flex items-center space-x-3 cursor-pointer" onClick={() => setView('categories')}>
+        <div className="bg-indigo-600 p-2 rounded-lg">
+          <FolderOpen className="text-white h-6 w-6" />
+        </div>
+        <span className="text-xl font-bold tracking-tight text-slate-800">Foto Memo</span>
+      </div>
+
+      {/* Rechterkant: Google Knop en eventuele status icons */}
+      <div className="flex items-center space-x-4">
+        <div id="google-login-button" style={{ minWidth: '200px', minHeight: '40px' }}></div>
+        {/* Hieronder kunnen eventuele andere icoontjes blijven staan */}
+      </div>
+    </div>
   </div>
-  {/* EINDE TOEVOEGING */}
-</div>
+</nav>
             <div className="flex items-center space-x-3">
               {/* Sync Status Indicator */}
               {isLoggedIn ? (
