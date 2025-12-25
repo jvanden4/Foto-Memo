@@ -68,7 +68,6 @@ const App: React.FC = () => {
   const scanInputRef = useRef<HTMLInputElement>(null);
   const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Initialize Google Auth
   useEffect(() => {
     initGoogleAuth((status) => {
         setIsLoggedIn(status);
@@ -79,9 +78,8 @@ const App: React.FC = () => {
     try {
         await signIn();
         setIsLoggedIn(true);
-        // Load cloud data after login
         const cloudData = await loadFromDrive();
-        if (cloudData && window.confirm("Data gevonden op Google Drive. Wil je deze herstellen? (Lokale metadata wordt overschreven)")) {
+        if (cloudData && window.confirm("Data gevonden op Google Drive. Herstellen?")) {
             if (cloudData.categories) setCustomCategories(cloudData.categories);
             if (cloudData.metadata) {
                 for (const id of Object.keys(cloudData.metadata)) {
@@ -100,7 +98,6 @@ const App: React.FC = () => {
     setIsLoggedIn(false);
   };
 
-  // Cloud Sync Logic
   const triggerSync = useCallback(() => {
     if (!isLoggedIn) return;
     if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
@@ -126,20 +123,12 @@ const App: React.FC = () => {
         } finally {
             setIsSyncing(false);
         }
-    }, 2000); // 2 second debounce for sync
+    }, 2000);
   }, [isLoggedIn, items, customCategories]);
 
-  useEffect(() => {
-    triggerSync();
-  }, [items, customCategories, triggerSync]);
-
-  useEffect(() => {
-    sessionStorage.setItem(STORAGE_KEY_VIEW, view);
-  }, [view]);
-
-  useEffect(() => {
-    sessionStorage.setItem(STORAGE_KEY_ACTIVE_CAT, activeCategory);
-  }, [activeCategory]);
+  useEffect(() => { triggerSync(); }, [items, customCategories, triggerSync]);
+  useEffect(() => { sessionStorage.setItem(STORAGE_KEY_VIEW, view); }, [view]);
+  useEffect(() => { sessionStorage.setItem(STORAGE_KEY_ACTIVE_CAT, activeCategory); }, [activeCategory]);
 
   const categories = useMemo(() => {
     const sortedCustom = [...customCategories].sort((a, b) => a.localeCompare(b));
@@ -150,12 +139,9 @@ const App: React.FC = () => {
     const counts: Record<string, number> = {};
     categories.forEach(c => counts[c] = 0);
     items.forEach(item => {
-        const cat = item.category; 
-        if (cat && counts[cat] !== undefined) {
-             counts[cat]++;
-        } else {
-             counts['Nog te sorteren']++;
-        }
+        const cat = item.category || 'Nog te sorteren';
+        if (counts[cat] !== undefined) counts[cat]++;
+        else counts['Nog te sorteren']++;
     });
     return counts;
   }, [items, categories]);
@@ -214,10 +200,7 @@ const App: React.FC = () => {
 
       setCustomCategories(prev => {
           const combined = new Set([...prev, ...discoveredCategories]);
-          if (combined.size !== prev.length) {
-              return Array.from(combined);
-          }
-          return prev;
+          return Array.from(combined);
       });
     } catch (error) {
       console.error("Failed to load items from DB", error);
@@ -231,21 +214,14 @@ const App: React.FC = () => {
     loadData();
     return () => {
       setItems(prevItems => {
-        prevItems.forEach(item => {
-          if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
-        });
+        prevItems.forEach(item => { if (item.previewUrl) URL.revokeObjectURL(item.previewUrl); });
         return [];
       });
     };
   }, [loadData]);
 
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEY_NAME, folderName);
-  }, [folderName]);
-  
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEY_CATEGORIES, JSON.stringify(customCategories));
-  }, [customCategories]);
+  useEffect(() => { localStorage.setItem(STORAGE_KEY_NAME, folderName); }, [folderName]);
+  useEffect(() => { localStorage.setItem(STORAGE_KEY_CATEGORIES, JSON.stringify(customCategories)); }, [customCategories]);
 
   const handleFolderSelect = (name: string, newItems: MapItem[]) => {
     setFolderName(name);
@@ -254,49 +230,26 @@ const App: React.FC = () => {
     setIsSettingsOpen(false);
   };
 
-  const handleScanTrigger = () => {
-    scanInputRef.current?.click();
-  };
+  const handleScanTrigger = () => { scanInputRef.current?.click(); };
 
   const handleScanFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
       const files = event.target.files;
       if (!files || files.length === 0) return;
-
       setIsRefreshing(true);
       const previousCount = items.length;
-
       try {
         const dbItems: StoredFile[] = [];
-        const fileArray: File[] = Array.from(files);
-
-        for (let index = 0; index < fileArray.length; index++) {
-            const file = fileArray[index];
+        for (const file of Array.from(files)) {
             if (getFileType(file) !== 'image') continue;
-
             const { mapItem, buffer } = await processFileToItem(file);
             const { previewUrl: _, ...meta } = mapItem;
-            
-            dbItems.push({
-                id: mapItem.id,
-                buffer,
-                fileType: file.type,
-                meta
-            });
+            dbItems.push({ id: mapItem.id, buffer, fileType: file.type, meta });
         }
-        
         await upsertFilesToDB(dbItems);
         await loadData();
-        
-        const newCount = (await loadFilesFromDB()).length;
-        const added = Math.max(0, newCount - previousCount);
-        if (added > 0) {
-            alert(`${added} nieuwe foto('s) toegevoegd.`);
-        } else {
-            alert("Geen nieuwe foto's gevonden.");
-        }
+        alert("Refresh voltooid.");
       } catch (err) {
-          console.error("Failed to refresh files", err);
-          alert("Er is een fout opgetreden bij het verversen.");
+          console.error(err);
       } finally {
           setIsRefreshing(false);
           setIsSettingsOpen(false);
@@ -311,22 +264,17 @@ const App: React.FC = () => {
   };
 
   const handleRenameCategory = async (oldName: string, newName: string) => {
-    if (!newName || newName === oldName || customCategories.includes(newName)) return;
     setCustomCategories(prev => prev.map(c => c === oldName ? newName : c));
     setItems(prev => prev.map(item => item.category === oldName ? { ...item, category: newName } : item));
     const itemsToUpdate = items.filter(i => i.category === oldName);
-    for (const item of itemsToUpdate) {
-        await updateFileMetadata(item.id, { category: newName });
-    }
+    for (const item of itemsToUpdate) await updateFileMetadata(item.id, { category: newName });
   };
 
   const handleDeleteCategory = async (categoryToDelete: string) => {
     setCustomCategories(prev => prev.filter(c => c !== categoryToDelete));
     setItems(prev => prev.map(item => item.category === categoryToDelete ? { ...item, category: 'Nog te sorteren' } : item));
     const itemsToUpdate = items.filter(i => i.category === categoryToDelete);
-    for (const item of itemsToUpdate) {
-        await updateFileMetadata(item.id, { category: 'Nog te sorteren' });
-    }
+    for (const item of itemsToUpdate) await updateFileMetadata(item.id, { category: 'Nog te sorteren' });
   };
 
   const handleUpdateItem = async (id: string, newName: string, newCategory: string, newNotes: string) => {
@@ -341,7 +289,7 @@ const App: React.FC = () => {
   };
 
   const handleDeleteItems = async (itemIds: string[]): Promise<boolean> => {
-    if (!window.confirm(`Weet je zeker dat je ${itemIds.length} foto('s) wilt verwijderen?`)) return false;
+    if (!window.confirm(`Verwijder ${itemIds.length} foto's?`)) return false;
     setItems(prev => prev.filter(item => !itemIds.includes(item.id)));
     await deleteFilesFromDB(itemIds);
     return true;
@@ -349,55 +297,35 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#fdfbf7] text-slate-800 flex flex-col">
-      <input
-        type="file"
-        ref={scanInputRef}
-        onChange={handleScanFileChange}
-        className="hidden"
-        multiple
-        {...({ webkitdirectory: "", directory: "" } as any)}
-      />
+      <input type="file" ref={scanInputRef} onChange={handleScanFileChange} className="hidden" multiple />
 
+      {/* HEADER / NAV */}
       <nav className="bg-[#fdfbf7]/80 backdrop-blur-md border-b border-stone-200 sticky top-0 z-40">
-  <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-    <div className="flex items-center justify-between h-16">
-      {/* Logo gedeelte */}
-      <div className="flex items-center space-x-3 cursor-pointer" onClick={() => setView('categories')}>
-        <div className="bg-indigo-600 p-2 rounded-lg">
-          <FolderOpen className="text-white h-6 w-6" />
-        </div>
-        <span className="text-xl font-bold tracking-tight text-slate-800">Foto Memo</span>
-      </div>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16">
+            <div className="flex items-center space-x-3 cursor-pointer" onClick={() => setView('categories')}>
+              <div className="bg-indigo-600 p-2 rounded-lg">
+                <FolderOpen className="text-white h-6 w-6" />
+              </div>
+              <span className="text-xl font-bold tracking-tight text-slate-800">Foto Memo</span>
+            </div>
 
-      {/* Rechterkant: Google Knop en eventuele status icons */}
-      <div className="flex items-center space-x-4">
-        <div id="google-login-button" style={{ minWidth: '200px', minHeight: '40px' }}></div>
-        {/* Hieronder kunnen eventuele andere icoontjes blijven staan */}
-      </div>
-    </div>
-  </div>
-</nav>
             <div className="flex items-center space-x-3">
-              {/* Sync Status Indicator */}
+              <div id="google-login-button"></div>
+              
               {isLoggedIn ? (
-                <div className={`flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider transition-all
-                  ${isSyncing ? 'bg-indigo-100 text-indigo-600' : 'bg-green-100 text-green-600'}`}
-                >
+                <div className={`flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-bold uppercase transition-all ${isSyncing ? 'bg-indigo-100 text-indigo-600' : 'bg-green-100 text-green-600'}`}>
                   {isSyncing ? <Loader2 className="animate-spin" size={12} /> : <Cloud size={12} />}
-                  {isSyncing ? 'Syncing' : 'Cloud'}
+                  {isSyncing ? 'Sync' : 'Cloud'}
                 </div>
               ) : (
-                <button 
-                  onClick={handleSignIn}
-                  className="flex items-center gap-1.5 px-3 py-1 bg-stone-100 hover:bg-stone-200 text-slate-500 rounded-full text-[10px] font-bold uppercase transition-all"
-                >
-                  <CloudOff size={12} />
-                  Offline
-                </button>
+                <div className="flex items-center gap-1.5 px-3 py-1 bg-stone-100 text-slate-500 rounded-full text-[10px] font-bold uppercase">
+                  <CloudOff size={12} /> Offline
+                </div>
               )}
 
-              <button onClick={() => setIsSettingsOpen(true)} className="p-2 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-stone-200 transition-all group">
-                <Settings className={`h-6 w-6 transition-transform duration-500 ${isSettingsOpen ? 'rotate-90' : ''}`} />
+              <button onClick={() => setIsSettingsOpen(true)} className="p-2 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-stone-200 transition-all">
+                <Settings className={`h-6 w-6 ${isSettingsOpen ? 'rotate-90' : ''} transition-transform duration-500`} />
               </button>
             </div>
           </div>
@@ -409,93 +337,38 @@ const App: React.FC = () => {
             <div className="mb-8 p-4 bg-orange-50 border border-orange-100 rounded-xl flex items-center justify-between">
                 <div className="flex items-center gap-3 text-orange-800">
                     <LogIn size={20} />
-                    <p className="text-sm font-medium">Log in met Google om je categorieën en metadata veilig in de cloud te bewaren.</p>
+                    <p className="text-sm">Log in voor cloud backup.</p>
                 </div>
-                <button onClick={handleSignIn} className="bg-orange-600 text-white px-4 py-1.5 rounded-lg text-sm font-bold shadow-md shadow-orange-600/10 active:scale-95 transition-all">
-                    Inloggen
-                </button>
+                <button onClick={handleSignIn} className="bg-orange-600 text-white px-4 py-1.5 rounded-lg text-sm font-bold shadow-md">Inloggen</button>
             </div>
         )}
 
         {isLoading || isRefreshing ? (
           <div className="flex flex-col items-center justify-center h-64 space-y-4">
             <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600"></div>
-            <p className="text-slate-500 font-medium">{isRefreshing ? 'Foto\'s bijwerken...' : 'Laden...'}</p>
           </div>
         ) : (
            <>
              {view === 'categories' && (
                 <div className="space-y-12">
-                    <CategoryGrid 
-                        categories={categories.filter(c => c !== 'Nog te sorteren')}
-                        counts={categoryCounts}
-                        categoryCovers={categoryCovers}
-                        onSelectCategory={(cat) => { setActiveCategory(cat); setView('items'); }}
-                        onCreateCategory={handleCreateCategory}
-                        onRenameCategory={handleRenameCategory}
-                        onDeleteCategory={handleDeleteCategory}
-                        onDropItem={(itemId, category) => handleMoveItems([itemId], category)}
-                    />
-                     <div className="animate-in fade-in slide-in-from-top-4 duration-500 border-t border-stone-200 pt-8">
+                    <CategoryGrid categories={categories.filter(c => c !== 'Nog te sorteren')} counts={categoryCounts} categoryCovers={categoryCovers} onSelectCategory={(cat) => { setActiveCategory(cat); setView('items'); }} onCreateCategory={handleCreateCategory} onRenameCategory={handleRenameCategory} onDeleteCategory={handleDeleteCategory} onDropItem={(itemId, category) => handleMoveItems([itemId], category)} />
+                    <div className="border-t border-stone-200 pt-8">
                          <h3 className="text-lg font-semibold text-slate-400 mb-4 px-1">Nog te sorteren</h3>
                          <div className="bg-black rounded-t-3xl p-4 sm:p-6 min-h-[400px]">
-                            <ContentGrid 
-                                items={inboxItems} 
-                                isLoading={false} 
-                                mapName="" 
-                                categoryName="Inbox"
-                                categories={categories}
-                                onBack={() => {}}
-                                onEditItem={(item) => { setEditingItem(item); setIsEditModalOpen(true); }}
-                                onMoveItems={handleMoveItems}
-                                onDeleteItems={handleDeleteItems}
-                                isInboxMode={true}
-                                darkMode={true}
-                            />
+                            <ContentGrid items={inboxItems} isLoading={false} mapName="" categoryName="Inbox" categories={categories} onBack={() => {}} onEditItem={(item) => { setEditingItem(item); setIsEditModalOpen(true); }} onMoveItems={handleMoveItems} onDeleteItems={handleDeleteItems} isInboxMode={true} darkMode={true} />
                         </div>
                     </div>
                 </div>
              )}
              {view === 'items' && (
-                <ContentGrid 
-                    items={filteredItems} 
-                    isLoading={false} 
-                    mapName={folderName || "Mijn Map"} 
-                    categoryName={activeCategory}
-                    categories={categories}
-                    onBack={() => { setView('categories'); setActiveCategory(''); }}
-                    onEditItem={(item) => { setEditingItem(item); setIsEditModalOpen(true); }}
-                    onMoveItems={handleMoveItems}
-                    onDeleteItems={handleDeleteItems}
-                />
+                <ContentGrid items={filteredItems} isLoading={false} mapName={folderName || "Mijn Map"} categoryName={activeCategory} categories={categories} onBack={() => { setView('categories'); setActiveCategory(''); }} onEditItem={(item) => { setEditingItem(item); setIsEditModalOpen(true); }} onMoveItems={handleMoveItems} onDeleteItems={handleDeleteItems} />
              )}
            </>
         )}
       </main>
 
-      <SettingsModal
-        isOpen={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
-        folderName={folderName}
-        onFolderSelect={handleFolderSelect}
-        onScan={handleScanTrigger}
-        isRefreshing={isRefreshing}
-        isLoggedIn={isLoggedIn}
-        onSignIn={handleSignIn}
-        onSignOut={handleSignOut}
-      />
-
-      <EditItemModal 
-        isOpen={isEditModalOpen}
-        onClose={() => setIsEditModalOpen(false)}
-        item={editingItem}
-        categories={categories.filter(c => c !== 'Nog te sorteren')}
-        onSave={handleUpdateItem}
-        onDelete={async (id) => {
-            const success = await handleDeleteItems([id]);
-            if (success) setIsEditModalOpen(false);
-        }}
-      />
+      <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} folderName={folderName} onFolderSelect={handleFolderSelect} onScan={handleScanTrigger} isRefreshing={isRefreshing} isLoggedIn={isLoggedIn} onSignIn={handleSignIn} onSignOut={handleSignOut} />
+      <EditItemModal isOpen={isEditModalOpen} onClose={() => setIsEditModalOpen(false)} item={editingItem} categories={categories.filter(c => c !== 'Nog te sorteren')} onSave={handleUpdateItem} onDelete={async (id) => { if (await handleDeleteItems([id])) setIsEditModalOpen(false); }} />
     </div>
   );
 };
