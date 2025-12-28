@@ -68,10 +68,26 @@ const App: React.FC = () => {
   const scanInputRef = useRef<HTMLInputElement>(null);
   const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // --- GOOGLE AUTH LOGIC ---
   useEffect(() => {
     initGoogleAuth((status) => {
         setIsLoggedIn(status);
     });
+
+    // Forceer het tekenen van de knop zodra het element beschikbaar is
+    const interval = setInterval(() => {
+      const btn = document.getElementById('google-login-button');
+      if (btn && (window as any).google) {
+        (window as any).google.accounts.id.renderButton(btn, {
+          theme: 'outline',
+          size: 'large',
+          text: 'signin_with'
+        });
+        clearInterval(interval);
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
   }, []);
 
   const handleSignIn = async () => {
@@ -79,7 +95,7 @@ const App: React.FC = () => {
         await signIn();
         setIsLoggedIn(true);
         const cloudData = await loadFromDrive();
-        if (cloudData && window.confirm("Data gevonden op Google Drive. Herstellen?")) {
+        if (cloudData && window.confirm("Cloud data gevonden. Herstellen?")) {
             if (cloudData.categories) setCustomCategories(cloudData.categories);
             if (cloudData.metadata) {
                 for (const id of Object.keys(cloudData.metadata)) {
@@ -236,144 +252,8 @@ const App: React.FC = () => {
       const files = event.target.files;
       if (!files || files.length === 0) return;
       setIsRefreshing(true);
-      const previousCount = items.length;
       try {
         const dbItems: StoredFile[] = [];
         for (const file of Array.from(files)) {
             if (getFileType(file) !== 'image') continue;
             const { mapItem, buffer } = await processFileToItem(file);
-            const { previewUrl: _, ...meta } = mapItem;
-            dbItems.push({ id: mapItem.id, buffer, fileType: file.type, meta });
-        }
-        await upsertFilesToDB(dbItems);
-        await loadData();
-        alert("Refresh voltooid.");
-      } catch (err) {
-          console.error(err);
-      } finally {
-          setIsRefreshing(false);
-          setIsSettingsOpen(false);
-          if (scanInputRef.current) scanInputRef.current.value = '';
-      }
-  };
-
-  const handleCreateCategory = (name: string) => {
-    if (name !== 'Algemeen' && name !== 'Nog te sorteren' && !customCategories.includes(name)) {
-        setCustomCategories(prev => [...prev, name]);
-    }
-  };
-
-  const handleRenameCategory = async (oldName: string, newName: string) => {
-    setCustomCategories(prev => prev.map(c => c === oldName ? newName : c));
-    setItems(prev => prev.map(item => item.category === oldName ? { ...item, category: newName } : item));
-    const itemsToUpdate = items.filter(i => i.category === oldName);
-    for (const item of itemsToUpdate) await updateFileMetadata(item.id, { category: newName });
-  };
-
-  const handleDeleteCategory = async (categoryToDelete: string) => {
-    setCustomCategories(prev => prev.filter(c => c !== categoryToDelete));
-    setItems(prev => prev.map(item => item.category === categoryToDelete ? { ...item, category: 'Nog te sorteren' } : item));
-    const itemsToUpdate = items.filter(i => i.category === categoryToDelete);
-    for (const item of itemsToUpdate) await updateFileMetadata(item.id, { category: 'Nog te sorteren' });
-  };
-
-  const handleUpdateItem = async (id: string, newName: string, newCategory: string, newNotes: string) => {
-     setItems(prev => prev.map(item => item.id === id ? { ...item, customName: newName, category: newCategory, notes: newNotes } : item));
-     if (newCategory !== 'Nog te sorteren') handleCreateCategory(newCategory);
-     await updateFileMetadata(id, { customName: newName, category: newCategory, notes: newNotes });
-  };
-
-  const handleMoveItems = async (itemIds: string[], targetCategory: string) => {
-    setItems(prev => prev.map(item => itemIds.includes(item.id) ? { ...item, category: targetCategory } : item));
-    for (const id of itemIds) await updateFileMetadata(id, { category: targetCategory });
-  };
-
-  const handleDeleteItems = async (itemIds: string[]): Promise<boolean> => {
-    if (!window.confirm(`Verwijder ${itemIds.length} foto's?`)) return false;
-    setItems(prev => prev.filter(item => !itemIds.includes(item.id)));
-    await deleteFilesFromDB(itemIds);
-    return true;
-  };
-
-  return (
-    <div className="min-h-screen bg-[#fdfbf7] text-slate-800 flex flex-col">
-      <input type="file" ref={scanInputRef} onChange={handleScanFileChange} className="hidden" multiple />
-
-      {/* HEADER / NAV */}
-      <nav className="bg-[#fdfbf7]/80 backdrop-blur-md border-b border-stone-200 sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center space-x-3 cursor-pointer" onClick={() => setView('categories')}>
-              <div className="bg-indigo-600 p-2 rounded-lg">
-                <FolderOpen className="text-white h-6 w-6" />
-              </div>
-              <span className="text-xl font-bold tracking-tight text-slate-800">Foto Memo</span>
-            </div>
-
-            <div className="flex items-center space-x-3">
-  {/* Forceer een container voor de Google knop */}
-  <div 
-    id="google-login-button" 
-    className="min-h-[40px] min-w-[200px] flex items-center justify-center"
-    style={{ display: 'block' }}
-  ></div>
-  
-  {/* De rest van je icoontjes... */}
-  {isLoggedIn ? ( ... ) : ( ... )}
-</div>
-              ) : (
-                <div className="flex items-center gap-1.5 px-3 py-1 bg-stone-100 text-slate-500 rounded-full text-[10px] font-bold uppercase">
-                  <CloudOff size={12} /> Offline
-                </div>
-              )}
-
-              <button onClick={() => setIsSettingsOpen(true)} className="p-2 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-stone-200 transition-all">
-                <Settings className={`h-6 w-6 ${isSettingsOpen ? 'rotate-90' : ''} transition-transform duration-500`} />
-              </button>
-            </div>
-          </div>
-        </div>
-      </nav>
-
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {!isLoggedIn && (
-            <div className="mb-8 p-4 bg-orange-50 border border-orange-100 rounded-xl flex items-center justify-between">
-                <div className="flex items-center gap-3 text-orange-800">
-                    <LogIn size={20} />
-                    <p className="text-sm">Log in voor cloud backup.</p>
-                </div>
-                <button onClick={handleSignIn} className="bg-orange-600 text-white px-4 py-1.5 rounded-lg text-sm font-bold shadow-md">Inloggen</button>
-            </div>
-        )}
-
-        {isLoading || isRefreshing ? (
-          <div className="flex flex-col items-center justify-center h-64 space-y-4">
-            <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600"></div>
-          </div>
-        ) : (
-           <>
-             {view === 'categories' && (
-                <div className="space-y-12">
-                    <CategoryGrid categories={categories.filter(c => c !== 'Nog te sorteren')} counts={categoryCounts} categoryCovers={categoryCovers} onSelectCategory={(cat) => { setActiveCategory(cat); setView('items'); }} onCreateCategory={handleCreateCategory} onRenameCategory={handleRenameCategory} onDeleteCategory={handleDeleteCategory} onDropItem={(itemId, category) => handleMoveItems([itemId], category)} />
-                    <div className="border-t border-stone-200 pt-8">
-                         <h3 className="text-lg font-semibold text-slate-400 mb-4 px-1">Nog te sorteren</h3>
-                         <div className="bg-black rounded-t-3xl p-4 sm:p-6 min-h-[400px]">
-                            <ContentGrid items={inboxItems} isLoading={false} mapName="" categoryName="Inbox" categories={categories} onBack={() => {}} onEditItem={(item) => { setEditingItem(item); setIsEditModalOpen(true); }} onMoveItems={handleMoveItems} onDeleteItems={handleDeleteItems} isInboxMode={true} darkMode={true} />
-                        </div>
-                    </div>
-                </div>
-             )}
-             {view === 'items' && (
-                <ContentGrid items={filteredItems} isLoading={false} mapName={folderName || "Mijn Map"} categoryName={activeCategory} categories={categories} onBack={() => { setView('categories'); setActiveCategory(''); }} onEditItem={(item) => { setEditingItem(item); setIsEditModalOpen(true); }} onMoveItems={handleMoveItems} onDeleteItems={handleDeleteItems} />
-             )}
-           </>
-        )}
-      </main>
-
-      <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} folderName={folderName} onFolderSelect={handleFolderSelect} onScan={handleScanTrigger} isRefreshing={isRefreshing} isLoggedIn={isLoggedIn} onSignIn={handleSignIn} onSignOut={handleSignOut} />
-      <EditItemModal isOpen={isEditModalOpen} onClose={() => setIsEditModalOpen(false)} item={editingItem} categories={categories.filter(c => c !== 'Nog te sorteren')} onSave={handleUpdateItem} onDelete={async (id) => { if (await handleDeleteItems([id])) setIsEditModalOpen(false); }} />
-    </div>
-  );
-};
-
-export default App;
